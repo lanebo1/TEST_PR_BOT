@@ -48,6 +48,10 @@ jobs:
           PR_NUMBER = os.environ['PR_NUMBER']
           PR_URL = os.environ['PR_URL']
           
+          def escape_markdown(text):
+              """Escape underscores for Telegram Markdown"""
+              return text.replace('_', '\\_')  # Escape underscores
+          
           def get_message_title(action, merged):
               titles = {
                   'opened': '🔔 New Pull Request Created!',
@@ -63,34 +67,40 @@ jobs:
               return titles.get(action, '📬 Pull Request Activity!')
           
           def create_message():
-              title = get_message_title(os.environ['PR_ACTION'], os.environ['PR_MERGED'])
+              action = os.environ['PR_ACTION']
+              merged = os.environ['PR_MERGED']
+              title = get_message_title(action, merged)
               assignees = os.environ['PR_ASSIGNEES'] or 'None'
               reviewers = os.environ['PR_REVIEWERS'] or 'None'
               
+              # Escape markdown in dynamic fields
+              escaped_title = escape_markdown(os.environ['PR_TITLE'])
+              escaped_author = escape_markdown(os.environ['PR_AUTHOR'])
+              escaped_body = escape_markdown(os.environ['PR_BODY'])  # Assuming body might have underscores
+              
               status_line = ''
-              if os.environ['PR_ACTION'] == 'closed':
-                  if os.environ['PR_MERGED'] == 'true':
+              if action == 'closed':
+                  if merged == 'true':
                       status_line = '\n🎯 **Status:** Merged'
                   else:
                       status_line = '\n❌ **Status:** Closed without merging'
               
               return f"""{title}
           
-          📋 **Title:** {os.environ['PR_TITLE']}
-          👤 **Author:** {os.environ['PR_AUTHOR']}
+          📋 **Title:** {escaped_title}
+          👤 **Author:** {escaped_author}
           🌿 **Branch:** {os.environ['PR_HEAD_REF']} → {os.environ['PR_BASE_REF']}
           🔗 **URL:** {PR_URL}
           👥 **Assignees:** {assignees}
           👀 **Reviewers:** {reviewers}{status_line}
           
           📝 **Description:**
-          {os.environ['PR_BODY']}
+          {escaped_body}
           
           🕐 **Last Updated:** {datetime.now().isoformat()}"""
           
           def find_existing_message():
               """Find existing message for this PR by searching recent messages"""
-              # Get recent messages from the chat
               url = f'https://api.telegram.org/bot{TOKEN}/getUpdates'
               params = {'limit': 100, 'offset': -100}
               
@@ -101,13 +111,10 @@ jobs:
                   if not updates.get('ok'):
                       return None
                   
-                  # Look for messages containing this PR URL
                   for update in reversed(updates.get('result', [])):
                       if 'message' in update:
                           message = update['message']
-                          if (message.get('chat', {}).get('id') == int(CHAT_ID) and 
-                              'text' in message and 
-                              PR_URL in message['text']):
+                          if (message.get('chat', {}).get('id') == int(CHAT_ID) and 'text' in message and PR_URL in message['text']):
                               return message['message_id']
                   
                   return None
@@ -117,12 +124,11 @@ jobs:
           
           def main():
               message = create_message()
-              
-              # Try to find existing message for this PR
+              action = os.environ['PR_ACTION']
               existing_message_id = find_existing_message()
               
               if existing_message_id:
-                  # Try to edit existing message
+                  # Edit existing message
                   edit_url = f'https://api.telegram.org/bot{TOKEN}/editMessageText'
                   edit_data = {
                       'chat_id': CHAT_ID,
@@ -136,27 +142,28 @@ jobs:
                       result = response.json()
                       if result.get('ok'):
                           print('Message updated successfully')
-                          return
                       else:
                           print(f'Failed to edit message: {result.get("description", "Unknown error")}')
                   except Exception as e:
                       print(f'Error editing message: {e}')
-              
-              # Send new message if no existing message found or edit failed
-              send_url = f'https://api.telegram.org/bot{TOKEN}/sendMessage'
-              send_data = {
-                  'chat_id': CHAT_ID,
-                  'text': message,
-                  'parse_mode': 'Markdown'
-              }
-              
-              response = requests.post(send_url, json=send_data)
-              result = response.json()
-              
-              if result.get('ok'):
-                  print('New message sent successfully')
+              elif action == 'opened':
+                  # Send new message only if action is 'opened'
+                  send_url = f'https://api.telegram.org/bot{TOKEN}/sendMessage'
+                  send_data = {
+                      'chat_id': CHAT_ID,
+                      'text': message,
+                      'parse_mode': 'Markdown'
+                  }
+                  
+                  response = requests.post(send_url, json=send_data)
+                  result = response.json()
+                  
+                  if result.get('ok'):
+                      print('New message sent successfully')
+                  else:
+                      print(f'Failed to send message: {result}')
               else:
-                  print(f'Failed to send message: {result}')
+                  print('No existing message found and not an "opened" action, so no new message sent.')
           
           if __name__ == '__main__':
               main()
