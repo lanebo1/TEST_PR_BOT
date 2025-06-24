@@ -173,9 +173,12 @@ jobs:
           def main():
               message = create_message()
               action = os.environ['PR_ACTION']
+              print(f"Processing action: {action} for PR #{PR_NUMBER}")
+              
               existing_message_id = find_existing_message()
               
               if existing_message_id:
+                  print(f"Found existing message ID: {existing_message_id}, attempting to update...")
                   # Edit existing message
                   edit_url = f'https://api.telegram.org/bot{TOKEN}/editMessageText'
                   edit_data = {
@@ -195,17 +198,20 @@ jobs:
                           print(f'Failed to edit message: {result.get("description", "Unknown error")}')
                           print(f'Full response: {result}')
                           # If edit failed, send a new message for important actions
-                          if action in ['opened', 'closed', 'ready_for_review']:
+                          if action in ['opened', 'closed', 'ready_for_review', 'review_requested', 'edited']:
+                              print("Edit failed, sending new message...")
                               send_new_message(message)
                   except Exception as e:
                       print(f'Error editing message: {e}')
                       # If edit failed, send a new message for important actions
-                      if action in ['opened', 'closed', 'ready_for_review']:
+                      if action in ['opened', 'closed', 'ready_for_review', 'review_requested', 'edited']:
+                          print("Edit error, sending new message...")
                           send_new_message(message)
               elif action == 'opened':
                   # Send new message only if action is 'opened'
+                  print("No existing message found, sending new message for 'opened' action...")
                   send_new_message(message)
-              elif action in ['closed', 'ready_for_review']:
+              elif action in ['closed', 'ready_for_review', 'review_requested', 'edited']:
                   # For important actions, send new message even if original not found
                   print(f'No existing message found for PR #{PR_NUMBER} but action "{action}" is important, sending new message.')
                   send_new_message(message)
@@ -214,6 +220,7 @@ jobs:
           
           def send_new_message(message):
               """Send a new Telegram message"""
+              print("Attempting to send new message...")
               send_url = f'https://api.telegram.org/bot{TOKEN}/sendMessage'
               send_data = {
                   'chat_id': CHAT_ID,
@@ -222,13 +229,17 @@ jobs:
                   'disable_web_page_preview': True
               }
               
-              response = requests.post(send_url, json=send_data)
-              result = response.json()
-              
-              if result.get('ok'):
-                  print('New message sent successfully')
-              else:
-                  print(f'Failed to send message: {result}')
+              try:
+                  response = requests.post(send_url, json=send_data)
+                  result = response.json()
+                  
+                  if result.get('ok'):
+                      print('New message sent successfully')
+                      print(f'Message ID: {result.get("result", {}).get("message_id")}')
+                  else:
+                      print(f'Failed to send message: {result}')
+              except Exception as e:
+                  print(f'Error sending message: {e}')
           
           if __name__ == '__main__':
               main()
