@@ -49,8 +49,16 @@ jobs:
           PR_URL = os.environ['PR_URL']
           
           def escape_markdown(text):
-              """Escape underscores for Telegram Markdown"""
-              return text.replace('_', '\\_')  # Escape underscores
+              """Escape special characters for Telegram Markdown"""
+              if not text:
+                  return text
+              # Escape underscores, asterisks, backticks, and square brackets
+              text = text.replace('_', '\\_')
+              text = text.replace('*', '\\*')
+              text = text.replace('`', '\\`')
+              text = text.replace('[', '\\[')
+              text = text.replace(']', '\\]')
+              return text
           
           def get_message_title(action, merged):
               titles = {
@@ -76,7 +84,9 @@ jobs:
               # Escape markdown in dynamic fields
               escaped_title = escape_markdown(os.environ['PR_TITLE'])
               escaped_author = escape_markdown(os.environ['PR_AUTHOR'])
-              escaped_body = escape_markdown(os.environ['PR_BODY'])  # Assuming body might have underscores
+              escaped_body = escape_markdown(os.environ['PR_BODY']) if os.environ['PR_BODY'] else 'No description provided'
+              escaped_head_ref = escape_markdown(os.environ['PR_HEAD_REF'])
+              escaped_base_ref = escape_markdown(os.environ['PR_BASE_REF'])
               
               status_line = ''
               if action == 'closed':
@@ -89,7 +99,7 @@ jobs:
           
           📋 **Title:** {escaped_title}
           👤 **Author:** {escaped_author}
-          🌿 **Branch:** {os.environ['PR_HEAD_REF']} → {os.environ['PR_BASE_REF']}
+          🌿 **Branch:** {escaped_head_ref} → {escaped_base_ref}
           🔗 **URL:** {PR_URL}
           👥 **Assignees:** {assignees}
           👀 **Reviewers:** {reviewers}{status_line}
@@ -97,26 +107,35 @@ jobs:
           📝 **Description:**
           {escaped_body}
           
-          🕐 **Last Updated:** {datetime.now().isoformat()}"""
+          🕐 **Last Updated:** {datetime.now().isoformat()}
+          
+          📊 **PR #{PR_NUMBER}**"""
           
           def find_existing_message():
               """Find existing message for this PR by searching recent messages"""
               url = f'https://api.telegram.org/bot{TOKEN}/getUpdates'
-              params = {'limit': 100, 'offset': -100}
+              params = {'limit': 100}
               
               try:
                   response = requests.get(url, params=params)
                   updates = response.json()
                   
                   if not updates.get('ok'):
+                      print(f"Failed to get updates: {updates}")
                       return None
                   
+                  # Look for messages containing this PR number
+                  pr_identifier = f"PR #{PR_NUMBER}"
                   for update in reversed(updates.get('result', [])):
                       if 'message' in update:
                           message = update['message']
-                          if (message.get('chat', {}).get('id') == int(CHAT_ID) and 'text' in message and PR_URL in message['text']):
+                          if (message.get('chat', {}).get('id') == int(CHAT_ID) and 
+                              'text' in message and 
+                              pr_identifier in message['text']):
+                              print(f"Found existing message with ID: {message['message_id']}")
                               return message['message_id']
                   
+                  print("No existing message found")
                   return None
               except Exception as e:
                   print(f"Error searching for existing message: {e}")
@@ -134,7 +153,8 @@ jobs:
                       'chat_id': CHAT_ID,
                       'message_id': existing_message_id,
                       'text': message,
-                      'parse_mode': 'Markdown'
+                      'parse_mode': 'Markdown',
+                      'disable_web_page_preview': True
                   }
                   
                   try:
@@ -144,6 +164,7 @@ jobs:
                           print('Message updated successfully')
                       else:
                           print(f'Failed to edit message: {result.get("description", "Unknown error")}')
+                          print(f'Full response: {result}')
                   except Exception as e:
                       print(f'Error editing message: {e}')
               elif action == 'opened':
@@ -152,7 +173,8 @@ jobs:
                   send_data = {
                       'chat_id': CHAT_ID,
                       'text': message,
-                      'parse_mode': 'Markdown'
+                      'parse_mode': 'Markdown',
+                      'disable_web_page_preview': True
                   }
                   
                   response = requests.post(send_url, json=send_data)
@@ -163,7 +185,7 @@ jobs:
                   else:
                       print(f'Failed to send message: {result}')
               else:
-                  print('No existing message found and not an "opened" action, so no new message sent.')
+                  print(f'No existing message found for PR #{PR_NUMBER} and action is "{action}", so no new message sent.')
           
           if __name__ == '__main__':
               main()
