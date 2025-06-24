@@ -109,36 +109,65 @@ jobs:
           
           🕐 **Last Updated:** {datetime.now().isoformat()}
           
-          📊 **PR #{PR_NUMBER}**"""
+          🔍 **TELEGRAM\\_BOT\\_PR\\_{PR_NUMBER}\\_IDENTIFIER**"""
           
           def find_existing_message():
               """Find existing message for this PR by searching recent messages"""
-              url = f'https://api.telegram.org/bot{TOKEN}/getUpdates'
-              params = {'limit': 100}
+              # Try multiple approaches to find the message
+              message_id = None
               
+              # Method 1: Search in getUpdates
+              message_id = search_in_updates()
+              if message_id:
+                  return message_id
+              
+              # Method 2: Try with different offset values
+              for offset in [0, -50, -100]:
+                  message_id = search_in_updates(offset)
+                  if message_id:
+                      return message_id
+              
+              print(f"Could not find existing message for PR #{PR_NUMBER}")
+              return None
+          
+          def search_in_updates(offset=0):
+              """Search for PR message in Telegram updates"""
               try:
+                  url = f'https://api.telegram.org/bot{TOKEN}/getUpdates'
+                  params = {'limit': 100}
+                  if offset != 0:
+                      params['offset'] = offset
+                  
                   response = requests.get(url, params=params)
                   updates = response.json()
                   
                   if not updates.get('ok'):
-                      print(f"Failed to get updates: {updates}")
+                      print(f"Failed to get updates with offset {offset}: {updates}")
                       return None
                   
-                  # Look for messages containing this PR number
-                  pr_identifier = f"PR #{PR_NUMBER}"
-                  for update in reversed(updates.get('result', [])):
+                  # Look for messages containing this PR identifier
+                  pr_identifier = f"TELEGRAM_BOT_PR_{PR_NUMBER}_IDENTIFIER"
+                  chat_id_int = int(CHAT_ID)
+                  
+                  print(f"Searching for PR identifier: {pr_identifier} (offset: {offset})")
+                  
+                  results = updates.get('result', [])
+                  print(f"Found {len(results)} updates to check")
+                  
+                  for update in reversed(results):
                       if 'message' in update:
                           message = update['message']
-                          if (message.get('chat', {}).get('id') == int(CHAT_ID) and 
-                              'text' in message and 
-                              pr_identifier in message['text']):
-                              print(f"Found existing message with ID: {message['message_id']}")
-                              return message['message_id']
+                          message_chat_id = message.get('chat', {}).get('id')
+                          message_text = message.get('text', '')
+                          message_id = message.get('message_id')
+                          
+                          if message_chat_id == chat_id_int and pr_identifier in message_text:
+                              print(f"Found existing message with ID: {message_id}")
+                              return message_id
                   
-                  print("No existing message found")
                   return None
               except Exception as e:
-                  print(f"Error searching for existing message: {e}")
+                  print(f"Error searching updates with offset {offset}: {e}")
                   return None
           
           def main():
@@ -165,27 +194,41 @@ jobs:
                       else:
                           print(f'Failed to edit message: {result.get("description", "Unknown error")}')
                           print(f'Full response: {result}')
+                          # If edit failed, send a new message for important actions
+                          if action in ['opened', 'closed', 'ready_for_review']:
+                              send_new_message(message)
                   except Exception as e:
                       print(f'Error editing message: {e}')
+                      # If edit failed, send a new message for important actions
+                      if action in ['opened', 'closed', 'ready_for_review']:
+                          send_new_message(message)
               elif action == 'opened':
                   # Send new message only if action is 'opened'
-                  send_url = f'https://api.telegram.org/bot{TOKEN}/sendMessage'
-                  send_data = {
-                      'chat_id': CHAT_ID,
-                      'text': message,
-                      'parse_mode': 'Markdown',
-                      'disable_web_page_preview': True
-                  }
-                  
-                  response = requests.post(send_url, json=send_data)
-                  result = response.json()
-                  
-                  if result.get('ok'):
-                      print('New message sent successfully')
-                  else:
-                      print(f'Failed to send message: {result}')
+                  send_new_message(message)
+              elif action in ['closed', 'ready_for_review']:
+                  # For important actions, send new message even if original not found
+                  print(f'No existing message found for PR #{PR_NUMBER} but action "{action}" is important, sending new message.')
+                  send_new_message(message)
               else:
                   print(f'No existing message found for PR #{PR_NUMBER} and action is "{action}", so no new message sent.')
+          
+          def send_new_message(message):
+              """Send a new Telegram message"""
+              send_url = f'https://api.telegram.org/bot{TOKEN}/sendMessage'
+              send_data = {
+                  'chat_id': CHAT_ID,
+                  'text': message,
+                  'parse_mode': 'Markdown',
+                  'disable_web_page_preview': True
+              }
+              
+              response = requests.post(send_url, json=send_data)
+              result = response.json()
+              
+              if result.get('ok'):
+                  print('New message sent successfully')
+              else:
+                  print(f'Failed to send message: {result}')
           
           if __name__ == '__main__':
               main()
