@@ -87,7 +87,7 @@ jobs:
               escaped_head_ref = escape_markdown(os.environ['PR_HEAD_REF'])
               escaped_base_ref = escape_markdown(os.environ['PR_BASE_REF'])
               
-              return f"""**NEW PR**
+              return f"""**⭐ Check out new PR ⭐**
           📋 **Title:** {escaped_title}
           👤 **Author:** {escaped_author}
           🌿 **Branch:** {escaped_head_ref} → {escaped_base_ref}
