@@ -77,7 +77,6 @@ jobs:
           def create_message():
               action = os.environ['PR_ACTION']
               merged = os.environ['PR_MERGED']
-              title = get_message_title(action, merged)
               assignees = os.environ['PR_ASSIGNEES'] or 'None'
               reviewers = os.environ['PR_REVIEWERS'] or 'None'
               
@@ -88,28 +87,15 @@ jobs:
               escaped_head_ref = escape_markdown(os.environ['PR_HEAD_REF'])
               escaped_base_ref = escape_markdown(os.environ['PR_BASE_REF'])
               
-              status_line = ''
-              if action == 'closed':
-                  if merged == 'true':
-                      status_line = '\n🎯 **Status:** Merged'
-                  else:
-                      status_line = '\n❌ **Status:** Closed without merging'
-              
-              return f"""{title}
-          
+              return f"""**NEW PR**
           📋 **Title:** {escaped_title}
           👤 **Author:** {escaped_author}
           🌿 **Branch:** {escaped_head_ref} → {escaped_base_ref}
           🔗 **URL:** {PR_URL}
           👥 **Assignees:** {assignees}
-          👀 **Reviewers:** {reviewers}{status_line}
-          
+          👀 **Reviewers:** {reviewers}
           📝 **Description:**
-          {escaped_body}
-          
-          🕐 **Last Updated:** {datetime.now().isoformat()}
-          
-          🔍 **TELEGRAM\\_BOT\\_PR\\_{PR_NUMBER}\\_IDENTIFIER**"""
+          {escaped_body}"""
           
           def find_existing_message():
               """Find existing message for this PR by searching recent messages"""
